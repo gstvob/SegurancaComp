@@ -19,3 +19,10 @@ const getStoredWallet = browser.storage.local.get();
 getStoredWallet.then(transaction, onError);
 
 
+browser.webRequest.onHeadersReceived.addListener(function(details) {
+    
+    if (details.statusLine.indexOf("402") > -1) {
+        console.log(details['responseHeaders'][2]);
+    }
+}, {urls: ['<all_urls>']}, ['blocking', 'responseHeaders']);
+

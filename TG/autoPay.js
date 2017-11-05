@@ -62,7 +62,7 @@ browser.webRequest.onHeadersReceived.addListener(function(details) {
                 var tx = bitcore.Transaction();
                 tx.from(utxos);
                 tx.to(addr2, ammount);
-                /*tx.sign(privK);
+                tx.sign(privK);
 
                 tx.serialize();
                 insight.broadcast(tx, function(err, txId) {
@@ -72,7 +72,7 @@ browser.webRequest.onHeadersReceived.addListener(function(details) {
                         //transação funcionou corretamente.
                         console.log(txId);
                     }
-                });*/
+                });
             }
         });
     }

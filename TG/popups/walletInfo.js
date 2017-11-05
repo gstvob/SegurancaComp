@@ -1,4 +1,5 @@
 
+
 function displayWallet(storedWallet) {
 	document.querySelector("#addr").textContent = storedWallet.carteira.addr;
 	document.querySelector("#privK").textContent = storedWallet.carteira.priv; 

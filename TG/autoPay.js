@@ -2,7 +2,6 @@ var carteira = {
     addr: "",
     priv: "",
 }
-
 var bitcore = require("bitcore-lib");
 
 /*
@@ -22,6 +21,10 @@ function transaction(storedWallet) {
 }
 
 
+function onError(err) {
+    console.log(err);
+}
+
 const getStoredWallet = browser.storage.local.get();
 /*tem que verificar se a carteira ta guardada*/
 getStoredWallet.then(transaction, onError);
@@ -30,9 +33,12 @@ getStoredWallet.then(transaction, onError);
 browser.webRequest.onHeadersReceived.addListener(function(details) {
     
     if (details.statusLine.indexOf("402") > -1) {
+        
+
         var cabecalho = details['responseHeaders'];
         var pAddr = "";
         var ammount = 0;
+        var about = "";
 
         for (i in cabecalho) {
             if (cabecalho[i]['name'] === "payAddr") {
@@ -41,40 +47,54 @@ browser.webRequest.onHeadersReceived.addListener(function(details) {
             } else if (cabecalho[i]['name'] === "ammount") {
                 ammount = cabecalho[i]['value'];
                 //console.log(ammount);
+            } else if (cabecalho[i]['name'] === "memo") {
+                about = cabecalho[i]['value'];
             }
         }
-        var addr2 = bitcore.Address.fromString(pAddr);
-        console.log(addr2.toString());
-        /*REALIZAR TRANSAÇÃO COM INSIGHT AQUI*/
-        var Insight = require("bitcore-explorers").Insight;
-        var insight = new Insight("testnet");
-        
-        var privK = bitcore.PrivateKey.fromString(carteira['priv']);
-        var addr = bitcore.Address.fromString(carteira['addr']);
-        console.log(privK);
-        console.log(addr);
 
-        insight.getUnspentUtxos(addr, function(err, utxos) {
-            if (err) {
-                //trata erros
-            } else {
-                //console.log(utxos.toString());
-                var tx = bitcore.Transaction();
-                tx.from(utxos);
-                tx.to(addr2, ammount);
-                tx.sign(privK);
-
-                tx.serialize();
-                insight.broadcast(tx, function(err, txId) {
-                    if (err) {
-                        //tratar erros.
-                    } else {
-                        //transação funcionou corretamente.
-                        console.log(txId);
-                    }
-                });
-            }
+        browser.notifications.create({
+            "type": "basic",
+            "iconUrl": browser.extension.getURL("icon.png"),
+            "title": "Pagamento requisitado",
+            "message": "A página requisitou um pagamento de "+ammount+" satoshis, com a descrição \""+about+"\", para confirmar apenas clique nessa notificação, caso contrário apenas feche-a ou ignore"
         });
+
+        function confirmPay() {
+            var addr2 = bitcore.Address.fromString(pAddr);
+            console.log(addr2.toString());
+            /*REALIZAR TRANSAÇÃO COM INSIGHT AQUI*/
+            var Insight = require("bitcore-explorers").Insight;
+            var insight = new Insight("testnet");
+            
+            var privK = bitcore.PrivateKey.fromString(carteira['priv']);
+            var addr = bitcore.Address.fromString(carteira['addr']);
+            console.log(privK);
+            console.log(addr);
+
+            insight.getUnspentUtxos(addr, function(err, utxos) {
+                if (err) {
+                    //trata erros
+                } else {
+                    /*console.log(utxos.toString());
+                    console.log(parseInt());*/
+                    var tx = bitcore.Transaction();
+                    tx.from(utxos);
+                    tx.to(addr2, parseInt(ammount));
+                    tx.sign(privK);
+
+                    tx.serialize();
+                    insight.broadcast(tx, function(err, txId) {
+                        if (err) {
+                            //tratar erros.
+                        } else {
+                            //transação funcionou corretamente.
+                            console.log(txId);
+                        }
+                    });
+                }
+            });
+        }
+        browser.notifications.onClicked.addListener(confirmPay);
     }
 }, {urls: ['<all_urls>']}, ['blocking', 'responseHeaders']);
 

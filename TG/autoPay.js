@@ -2,6 +2,9 @@ var carteira = {
     addr: "",
     priv: "",
 }
+
+var registros = [];
+
 var bitcore = require("bitcore-lib");
 
 /*
@@ -61,22 +64,20 @@ browser.webRequest.onHeadersReceived.addListener(function(details) {
 
         function confirmPay() {
             var addr2 = bitcore.Address.fromString(pAddr);
-            console.log(addr2.toString());
+
             /*REALIZAR TRANSAÇÃO COM INSIGHT AQUI*/
             var Insight = require("bitcore-explorers").Insight;
             var insight = new Insight("testnet");
             
             var privK = bitcore.PrivateKey.fromString(carteira['priv']);
             var addr = bitcore.Address.fromString(carteira['addr']);
-            console.log(privK);
-            console.log(addr);
 
             insight.getUnspentUtxos(addr, function(err, utxos) {
                 if (err) {
                     //trata erros
                 } else {
-                    /*console.log(utxos.toString());
-                    console.log(parseInt());*/
+                    //console.log(utxos.toString());
+                    //console.log(parseInt(ammount));
                     var tx = bitcore.Transaction();
                     tx.from(utxos);
                     tx.to(addr2, parseInt(ammount));
@@ -88,7 +89,14 @@ browser.webRequest.onHeadersReceived.addListener(function(details) {
                             //tratar erros.
                         } else {
                             //transação funcionou corretamente.
+                            registros.push({
+                                from: addr.toString(),
+                                to: addr2.toString(),
+                                desc: about,
+                                preco: ammount.toString()
+                            });
                             console.log(txId);
+                            browser.storage.local.set({historico:registros});
                         }
                     });
                 }

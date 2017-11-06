@@ -7,8 +7,10 @@ var registros = [];
 
 var bitcore = require("bitcore-lib");
 
+
 /*
-    FUNÇÃO DE TESTE PARA VERIFICAR SE AS CHAVES PRIVADAS E ENDEREÇO ESTÃO SENDO SALVOS NO NAVEGADOR
+    função que guarda na variável carteira os valores de endereço e chave privada guardados no navegador.
+    @param storedWallet é a constante que ta com tudo que foi guardado no navegador.
 */
 function transaction(storedWallet) {
     var privK = bitcore.PrivateKey.fromString(storedWallet.carteira.priv);
@@ -20,7 +22,7 @@ function transaction(storedWallet) {
     carteira['addr'] = addr.toString();
     carteira['priv'] = privK.toString();
 
-    console.log(carteira['addr']);
+   // console.log(carteira['addr']);
 }
 
 
@@ -28,16 +30,24 @@ function onError(err) {
     console.log(err);
 }
 
+/*
+    constante que carrega tudo que tá guardado no navegador e chama a função "transaction"
+*/
 const getStoredWallet = browser.storage.local.get();
-/*tem que verificar se a carteira ta guardada*/
 getStoredWallet.then(transaction, onError);
 
 
+/*
+    Listener para tratar o pagamento quando recebe uma resposta HTTP status 402 = "Payment Required"
+*/
 browser.webRequest.onHeadersReceived.addListener(function(details) {
     
     if (details.statusLine.indexOf("402") > -1) {
         
-
+        /*
+            Pega o cabeçalho da resposta 402, nele constam informações como o endereço de destino, o preço do que está sendo comprado
+            e uma descrição/nome do que está sendo comprado.        
+        */
         var cabecalho = details['responseHeaders'];
         var pAddr = "";
         var ammount = 0;
@@ -54,7 +64,10 @@ browser.webRequest.onHeadersReceived.addListener(function(details) {
                 about = cabecalho[i]['value'];
             }
         }
-
+    
+        /*
+            Notificação para o usuário confirmar o pagamento.
+        */
         browser.notifications.create({
             "type": "basic",
             "iconUrl": browser.extension.getURL("icon.png"),
@@ -81,6 +94,7 @@ browser.webRequest.onHeadersReceived.addListener(function(details) {
                     var tx = bitcore.Transaction();
                     tx.from(utxos);
                     tx.to(addr2, parseInt(ammount));
+                    tx.change(addr);
                     tx.sign(privK);
 
                     tx.serialize();
@@ -88,12 +102,15 @@ browser.webRequest.onHeadersReceived.addListener(function(details) {
                         if (err) {
                             //tratar erros.
                         } else {
-                            //transação funcionou corretamente.
+                            //transação funcionou corretamente
+                            var date = new Date();
+                            var dateTime = date.getDate()+"/"+(date.getMonth()+1)+"/"+date.getFullYear();
                             registros.push({
                                 from: addr.toString(),
                                 to: addr2.toString(),
                                 desc: about,
-                                preco: ammount.toString()
+                                preco: ammount.toString(),
+                                data: dateTime
                             });
                             console.log(txId);
                             browser.storage.local.set({historico:registros});
@@ -102,6 +119,7 @@ browser.webRequest.onHeadersReceived.addListener(function(details) {
                 }
             });
         }
+
         browser.notifications.onClicked.addListener(confirmPay);
     }
 }, {urls: ['<all_urls>']}, ['blocking', 'responseHeaders']);

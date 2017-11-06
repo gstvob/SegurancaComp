@@ -8,6 +8,10 @@ function onError(e) {
     console.log(e);
 }
 
+/*
+    Guardar carteira padrão quando o plugin inicia.
+*/
+
 function checkStoredSettings(storedSettings) {
   if (!storedSettings.carteira) {
     browser.storage.local.set({carteira}); 

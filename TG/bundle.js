@@ -5,9 +5,15 @@ var carteira = {
 }
 
 var registros = [];
-
+var inited = false;
 var bitcore = require("bitcore-lib");
 
+
+
+function init() {
+    inited = true;
+    return inited;
+}
 
 /*
     função que guarda na variável carteira os valores de endereço e chave privada guardados no navegador.
@@ -36,7 +42,6 @@ function onError(err) {
 */
 const getStoredWallet = browser.storage.local.get();
 getStoredWallet.then(transaction, onError);
-
 
 /*
     Listener para tratar o pagamento quando recebe uma resposta HTTP status 402 = "Payment Required"
@@ -69,14 +74,14 @@ browser.webRequest.onHeadersReceived.addListener(function(details) {
         /*
             Notificação para o usuário confirmar o pagamento.
         */
-        browser.notifications.create({
+        browser.notifications.create("confirm", {
             "type": "basic",
             "iconUrl": browser.extension.getURL("icon.png"),
             "title": "Pagamento requisitado",
-            "message": "A página requisitou um pagamento de "+ammount+" satoshis, com a descrição \""+about+"\", para confirmar apenas clique nessa notificação, caso contrário apenas feche-a ou ignore"
+            "message": "A página requisitou um pagamento de "+ammount+" satoshis, com a descrição \""+about+"\", PARA CONFIRMAR CLIQUE NESSA NOTIFICAÇÃO, CASO CONTRÁRIO FECHE-A OU IGNORE-A"
         });
 
-        function confirmPay() {
+        var confirmPay = function () {
             var addr2 = bitcore.Address.fromString(pAddr);
 
             /*REALIZAR TRANSAÇÃO COM INSIGHT AQUI*/
@@ -119,9 +124,11 @@ browser.webRequest.onHeadersReceived.addListener(function(details) {
                     });
                 }
             });
+        };
+        if (!inited) {
+            browser.notifications.onClicked.addListener(confirmPay);
+            init();            
         }
-
-        browser.notifications.onClicked.addListener(confirmPay);
     }
 }, {urls: ['<all_urls>']}, ['blocking', 'responseHeaders']);
 

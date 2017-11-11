@@ -4,6 +4,8 @@ var carteira = {
     priv: "",
 }
 
+
+var listed = [];
 var registros = [];
 var inited = false;
 var bitcore = require("bitcore-lib");
@@ -49,7 +51,7 @@ getStoredWallet.then(transaction, onError);
 browser.webRequest.onHeadersReceived.addListener(function(details) {
     
     if (details.statusLine.indexOf("402") > -1) {
-        
+
         /*
             Pega o cabeçalho da resposta 402, nele constam informações como o endereço de destino, o preço do que está sendo comprado
             e uma descrição/nome do que está sendo comprado.        
@@ -70,65 +72,78 @@ browser.webRequest.onHeadersReceived.addListener(function(details) {
                 about = cabecalho[i]['value'];
             }
         }
+        
+        var addr2 = bitcore.Address.fromString(pAddr);
+        var Insight = require("bitcore-explorers").Insight;
+        var insight = new Insight("testnet");
     
-        /*
-            Notificação para o usuário confirmar o pagamento.
-        */
-        browser.notifications.create("confirm", {
-            "type": "basic",
-            "iconUrl": browser.extension.getURL("icon.png"),
-            "title": "Pagamento requisitado",
-            "message": "A página requisitou um pagamento de "+ammount+" satoshis, com a descrição \""+about+"\", PARA CONFIRMAR CLIQUE NESSA NOTIFICAÇÃO, CASO CONTRÁRIO FECHE-A OU IGNORE-A"
-        });
+        var privK = bitcore.PrivateKey.fromString(carteira['priv']);
+        var addr = bitcore.Address.fromString(carteira['addr']);
 
-        var confirmPay = function () {
-            var addr2 = bitcore.Address.fromString(pAddr);
+        var confirmPay =  { 
+            confirm : function () {
+                insight.getUnspentUtxos(addr, function(err, utxos) {
+                    if (err) {
+                        //trata erros
+                    } else {
+                        //console.log(utxos.toString());
+                        //console.log(parseInt(ammount));
+                        var tx = bitcore.Transaction();
+                        tx.from(utxos);
+                        tx.to(addr2, parseInt(ammount));
+                        tx.change(addr);
+                        tx.sign(privK);
 
-            /*REALIZAR TRANSAÇÃO COM INSIGHT AQUI*/
-            var Insight = require("bitcore-explorers").Insight;
-            var insight = new Insight("testnet");
-            
-            var privK = bitcore.PrivateKey.fromString(carteira['priv']);
-            var addr = bitcore.Address.fromString(carteira['addr']);
-
-            insight.getUnspentUtxos(addr, function(err, utxos) {
-                if (err) {
-                    //trata erros
-                } else {
-                    //console.log(utxos.toString());
-                    //console.log(parseInt(ammount));
-                    var tx = bitcore.Transaction();
-                    tx.from(utxos);
-                    tx.to(addr2, parseInt(ammount));
-                    tx.change(addr);
-                    tx.sign(privK);
-
-                    tx.serialize();
-                    insight.broadcast(tx, function(err, txId) {
-                        if (err) {
-                            //tratar erros.
-                        } else {
-                            //transação funcionou corretamente
-                            var date = new Date();
-                            var dateTime = date.getDate()+"/"+(date.getMonth()+1)+"/"+date.getFullYear();
-                            registros.push({
-                                from: addr.toString(),
-                                to: addr2.toString(),
-                                desc: about,
-                                preco: ammount.toString(),
-                                data: dateTime
-                            });
-                            console.log(txId);
-                            browser.storage.local.set({historico:registros});
-                        }
-                    });
-                }
-            });
+                        tx.serialize();
+                        insight.broadcast(tx, function(err, txId) {
+                            if (err) {
+                                //tratar erros.
+                            } else {
+                                //transação funcionou corretamente
+                                var date = new Date();
+                                var dateTime = date.getDate()+"/"+(date.getMonth()+1)+"/"+date.getFullYear();
+                                registros.push({
+                                    from: addr.toString(),
+                                    to: addr2.toString(),
+                                    desc: about,
+                                    preco: ammount.toString(),
+                                    data: dateTime
+                                });
+                                console.log(txId);
+                                browser.storage.local.set({historico:registros});
+                            }
+                        });
+                    }
+                });
+            }
         };
-        if (!inited) {
-            browser.notifications.onClicked.addListener(confirmPay);
-            init();            
-        }
+        var whitelisted = false;
+        browser.storage.local.get(["whitelist"], function(data) {
+            listed = data.whitelist;
+            for (i in listed) {
+                var url = "";
+                browser.tabs.query({currentWindow:true, active:true}, function(tabs) {url = tabs[0].url});
+                if (listed[i].url.indexOf(url) > -1 && listed[i].limit >= ammount) {
+                    whitelisted = true;
+                    break;
+                }
+            }
+            if (!whitelisted) {
+                browser.notifications.create("confirm", {
+                    "type": "basic",
+                    "iconUrl": browser.extension.getURL("icon.png"),
+                    "title": "Pagamento requisitado",
+                    "message": "A página requisitou um pagamento de "+ammount+" satoshis, com a descrição \""+about+"\", PARA CONFIRMAR CLIQUE NESSA NOTIFICAÇÃO, CASO CONTRÁRIO FECHE-A OU IGNORE-A"
+                });            
+            } else {
+                confirmPay.confirm();
+            }
+
+            if (!inited && !whitelisted) {
+                browser.notifications.onClicked.addListener(confirmPay.confirm);
+                init();            
+            }
+        });
     }
 }, {urls: ['<all_urls>']}, ['blocking', 'responseHeaders']);
 
@@ -12077,47 +12092,33 @@ module.exports = {
 
 },{"../errors":25,"buffer":141,"lodash":90}],53:[function(require,module,exports){
 module.exports={
-  "_args": [
-    [
-      "bitcore-lib",
-      "/home/administrador-admin/Documentos/seg/Tg/AutomatedPayments"
-    ]
-  ],
-  "_from": "bitcore-lib@latest",
+  "_from": "bitcore-lib",
   "_id": "bitcore-lib@0.15.0",
-  "_inCache": true,
-  "_installable": true,
+  "_inBundle": false,
+  "_integrity": "sha512-AeXLWhiivF6CDFzrABZHT4jJrflyylDWTi32o30rF92HW9msfuKpjzrHtFKYGa9w0kNVv5HABQjCB3OEav4PhQ==",
   "_location": "/bitcore-lib",
-  "_nodeVersion": "8.5.0",
-  "_npmOperationalInternal": {
-    "host": "s3://npm-registry-packages",
-    "tmp": "tmp/bitcore-lib-0.15.0.tgz_1509117847089_0.14109981711953878"
-  },
-  "_npmUser": {
-    "email": "ematiu@gmail.com",
-    "name": "ematiu"
-  },
-  "_npmVersion": "5.5.1",
   "_phantomChildren": {},
   "_requested": {
-    "name": "bitcore-lib",
+    "type": "tag",
+    "registry": true,
     "raw": "bitcore-lib",
+    "name": "bitcore-lib",
+    "escapedName": "bitcore-lib",
     "rawSpec": "",
-    "scope": null,
-    "spec": "latest",
-    "type": "tag"
+    "saveSpec": null,
+    "fetchSpec": "latest"
   },
   "_requiredBy": [
+    "#USER",
     "/"
   ],
   "_resolved": "https://registry.npmjs.org/bitcore-lib/-/bitcore-lib-0.15.0.tgz",
   "_shasum": "f924be13869f2aab7e04aeec5642ad3359b6cec2",
-  "_shrinkwrap": null,
   "_spec": "bitcore-lib",
-  "_where": "/home/administrador-admin/Documentos/seg/Tg/AutomatedPayments",
+  "_where": "/home/gustavob/Documentos/SegurancaComp-master/TG",
   "author": {
-    "email": "dev@bitpay.com",
-    "name": "BitPay"
+    "name": "BitPay",
+    "email": "dev@bitpay.com"
   },
   "browser": {
     "request": "browser-request"
@@ -12125,6 +12126,7 @@ module.exports={
   "bugs": {
     "url": "https://github.com/bitpay/bitcore-lib/issues"
   },
+  "bundleDependencies": false,
   "dependencies": {
     "bn.js": "=4.11.8",
     "bs58": "=4.0.1",
@@ -12133,6 +12135,7 @@ module.exports={
     "inherits": "=2.0.1",
     "lodash": "=4.17.4"
   },
+  "deprecated": false,
   "description": "A pure and powerful JavaScript Bitcoin library.",
   "devDependencies": {
     "bitcore-build": "git+https://github.com/bitpay/bitcore-build.git#d4e8b2b2f1e2c065c3a807dcb6a6250f61d67ab3",
@@ -12141,57 +12144,26 @@ module.exports={
     "gulp": "^3.8.10",
     "sinon": "^1.13.0"
   },
-  "directories": {},
-  "dist": {
-    "integrity": "sha512-AeXLWhiivF6CDFzrABZHT4jJrflyylDWTi32o30rF92HW9msfuKpjzrHtFKYGa9w0kNVv5HABQjCB3OEav4PhQ==",
-    "shasum": "f924be13869f2aab7e04aeec5642ad3359b6cec2",
-    "tarball": "https://registry.npmjs.org/bitcore-lib/-/bitcore-lib-0.15.0.tgz"
-  },
-  "gitHead": "75ef027ddef439ab5a8c280963fb99d058cd207c",
   "homepage": "https://github.com/bitpay/bitcore-lib#readme",
   "keywords": [
+    "bitcoin",
+    "transaction",
     "address",
+    "p2p",
+    "ecies",
+    "cryptocurrency",
+    "blockchain",
+    "payment",
     "bip21",
     "bip32",
     "bip37",
     "bip69",
     "bip70",
-    "bitcoin",
-    "blockchain",
-    "cryptocurrency",
-    "ecies",
-    "multisig",
-    "p2p",
-    "payment",
-    "transaction"
+    "multisig"
   ],
   "license": "MIT",
   "main": "index.js",
-  "maintainers": [
-    {
-      "name": "ematiu",
-      "email": "ematiu@gmail.com"
-    },
-    {
-      "name": "jasondreyzehner",
-      "email": "jason@dreyzehner.com"
-    },
-    {
-      "name": "kleetus",
-      "email": "laconia@gmail.com"
-    },
-    {
-      "name": "gabegattis",
-      "email": "gabegattis@gmail.com"
-    },
-    {
-      "name": "gasteve",
-      "email": "stephen@pairhome.net"
-    }
-  ],
   "name": "bitcore-lib",
-  "optionalDependencies": {},
-  "readme": "ERROR: No README data found!",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/bitpay/bitcore-lib.git"
@@ -20088,51 +20060,37 @@ utils.intFromLE = intFromLE;
 
 },{"bn.js":54,"minimalistic-assert":91,"minimalistic-crypto-utils":92}],74:[function(require,module,exports){
 module.exports={
-  "_args": [
-    [
-      "elliptic@=6.4.0",
-      "/home/administrador-admin/Documentos/seg/Tg/AutomatedPayments/node_modules/bitcore-lib"
-    ]
-  ],
-  "_from": "elliptic@6.4.0",
+  "_from": "elliptic@=6.4.0",
   "_id": "elliptic@6.4.0",
-  "_inCache": true,
-  "_installable": true,
+  "_inBundle": false,
+  "_integrity": "sha1-ysmvh2LIWDYYcAPI3+GT5eLq5d8=",
   "_location": "/elliptic",
-  "_nodeVersion": "7.0.0",
-  "_npmOperationalInternal": {
-    "host": "packages-18-east.internal.npmjs.com",
-    "tmp": "tmp/elliptic-6.4.0.tgz_1487798866428_0.30510620190761983"
-  },
-  "_npmUser": {
-    "email": "fedor@indutny.com",
-    "name": "indutny"
-  },
-  "_npmVersion": "3.10.8",
   "_phantomChildren": {},
   "_requested": {
-    "name": "elliptic",
+    "type": "version",
+    "registry": true,
     "raw": "elliptic@=6.4.0",
+    "name": "elliptic",
+    "escapedName": "elliptic",
     "rawSpec": "=6.4.0",
-    "scope": null,
-    "spec": "6.4.0",
-    "type": "version"
+    "saveSpec": null,
+    "fetchSpec": "=6.4.0"
   },
   "_requiredBy": [
     "/bitcore-lib"
   ],
   "_resolved": "https://registry.npmjs.org/elliptic/-/elliptic-6.4.0.tgz",
   "_shasum": "cac9af8762c85836187003c8dfe193e5e2eae5df",
-  "_shrinkwrap": null,
   "_spec": "elliptic@=6.4.0",
-  "_where": "/home/administrador-admin/Documentos/seg/Tg/AutomatedPayments/node_modules/bitcore-lib",
+  "_where": "/home/gustavob/node_modules/bitcore-lib",
   "author": {
-    "email": "fedor@indutny.com",
-    "name": "Fedor Indutny"
+    "name": "Fedor Indutny",
+    "email": "fedor@indutny.com"
   },
   "bugs": {
     "url": "https://github.com/indutny/elliptic/issues"
   },
+  "bundleDependencies": false,
   "dependencies": {
     "bn.js": "^4.4.0",
     "brorand": "^1.0.1",
@@ -20142,6 +20100,7 @@ module.exports={
     "minimalistic-assert": "^1.0.0",
     "minimalistic-crypto-utils": "^1.0.0"
   },
+  "deprecated": false,
   "description": "EC cryptography",
   "devDependencies": {
     "brfs": "^1.4.3",
@@ -20159,33 +20118,19 @@ module.exports={
     "jshint": "^2.6.0",
     "mocha": "^2.1.0"
   },
-  "directories": {},
-  "dist": {
-    "shasum": "cac9af8762c85836187003c8dfe193e5e2eae5df",
-    "tarball": "https://registry.npmjs.org/elliptic/-/elliptic-6.4.0.tgz"
-  },
   "files": [
     "lib"
   ],
-  "gitHead": "6b0d2b76caae91471649c8e21f0b1d3ba0f96090",
   "homepage": "https://github.com/indutny/elliptic",
   "keywords": [
-    "Cryptography",
     "EC",
     "Elliptic",
-    "curve"
+    "curve",
+    "Cryptography"
   ],
   "license": "MIT",
   "main": "lib/elliptic.js",
-  "maintainers": [
-    {
-      "name": "indutny",
-      "email": "fedor@indutny.com"
-    }
-  ],
   "name": "elliptic",
-  "optionalDependencies": {},
-  "readme": "ERROR: No README data found!",
   "repository": {
     "type": "git",
     "url": "git+ssh://git@github.com/indutny/elliptic.git"
@@ -39553,7 +39498,7 @@ Node.prototype._encodeValue = function encode(data, reporter, parent) {
 
     if (tag === null) {
       if (state.use === null)
-        reporter.error('Tag could be ommited only for .use()');
+        reporter.error('Tag could be omitted only for .use()');
     } else {
       if (state.use === null)
         result = this._encodeComposite(tag, primitive, cls, content);
@@ -46537,35 +46482,21 @@ arguments[4][72][0].apply(exports,arguments)
 arguments[4][73][0].apply(exports,arguments)
 },{"bn.js":110,"dup":73,"minimalistic-assert":201,"minimalistic-crypto-utils":202}],176:[function(require,module,exports){
 module.exports={
-  "_args": [
-    [
-      "elliptic@^6.0.0",
-      "/usr/local/lib/node_modules/browserify/node_modules/browserify-sign"
-    ]
-  ],
-  "_from": "elliptic@>=6.0.0 <7.0.0",
+  "_from": "elliptic@^6.0.0",
   "_id": "elliptic@6.4.0",
-  "_inCache": true,
-  "_installable": true,
+  "_inBundle": false,
+  "_integrity": "sha1-ysmvh2LIWDYYcAPI3+GT5eLq5d8=",
   "_location": "/browserify/elliptic",
-  "_nodeVersion": "7.0.0",
-  "_npmOperationalInternal": {
-    "host": "packages-18-east.internal.npmjs.com",
-    "tmp": "tmp/elliptic-6.4.0.tgz_1487798866428_0.30510620190761983"
-  },
-  "_npmUser": {
-    "email": "fedor@indutny.com",
-    "name": "indutny"
-  },
-  "_npmVersion": "3.10.8",
   "_phantomChildren": {},
   "_requested": {
-    "name": "elliptic",
+    "type": "range",
+    "registry": true,
     "raw": "elliptic@^6.0.0",
+    "name": "elliptic",
+    "escapedName": "elliptic",
     "rawSpec": "^6.0.0",
-    "scope": null,
-    "spec": ">=6.0.0 <7.0.0",
-    "type": "range"
+    "saveSpec": null,
+    "fetchSpec": "^6.0.0"
   },
   "_requiredBy": [
     "/browserify/browserify-sign",
@@ -46573,16 +46504,16 @@ module.exports={
   ],
   "_resolved": "https://registry.npmjs.org/elliptic/-/elliptic-6.4.0.tgz",
   "_shasum": "cac9af8762c85836187003c8dfe193e5e2eae5df",
-  "_shrinkwrap": null,
   "_spec": "elliptic@^6.0.0",
-  "_where": "/usr/local/lib/node_modules/browserify/node_modules/browserify-sign",
+  "_where": "/usr/lib/node_modules/browserify/node_modules/browserify-sign",
   "author": {
-    "email": "fedor@indutny.com",
-    "name": "Fedor Indutny"
+    "name": "Fedor Indutny",
+    "email": "fedor@indutny.com"
   },
   "bugs": {
     "url": "https://github.com/indutny/elliptic/issues"
   },
+  "bundleDependencies": false,
   "dependencies": {
     "bn.js": "^4.4.0",
     "brorand": "^1.0.1",
@@ -46592,6 +46523,7 @@ module.exports={
     "minimalistic-assert": "^1.0.0",
     "minimalistic-crypto-utils": "^1.0.0"
   },
+  "deprecated": false,
   "description": "EC cryptography",
   "devDependencies": {
     "brfs": "^1.4.3",
@@ -46609,33 +46541,19 @@ module.exports={
     "jshint": "^2.6.0",
     "mocha": "^2.1.0"
   },
-  "directories": {},
-  "dist": {
-    "shasum": "cac9af8762c85836187003c8dfe193e5e2eae5df",
-    "tarball": "https://registry.npmjs.org/elliptic/-/elliptic-6.4.0.tgz"
-  },
   "files": [
     "lib"
   ],
-  "gitHead": "6b0d2b76caae91471649c8e21f0b1d3ba0f96090",
   "homepage": "https://github.com/indutny/elliptic",
   "keywords": [
-    "Cryptography",
     "EC",
     "Elliptic",
-    "curve"
+    "curve",
+    "Cryptography"
   ],
   "license": "MIT",
   "main": "lib/elliptic.js",
-  "maintainers": [
-    {
-      "name": "indutny",
-      "email": "fedor@indutny.com"
-    }
-  ],
   "name": "elliptic",
-  "optionalDependencies": {},
-  "readme": "ERROR: No README data found!",
   "repository": {
     "type": "git",
     "url": "git+ssh://git@github.com/indutny/elliptic.git"

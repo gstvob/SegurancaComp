@@ -1,6 +1,6 @@
 browser.storage.local.get(["whitelist", "carteira"], function(data) {
 	var listed = data.whitelist;
-	console.log(listed);
+	console.log(data.whitelist);
 
 	for (w in listed) {
 		var url = listed[w].url

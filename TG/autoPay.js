@@ -3,6 +3,8 @@ var carteira = {
     priv: "",
 }
 
+
+var listed = [];
 var registros = [];
 var inited = false;
 var bitcore = require("bitcore-lib");
@@ -48,7 +50,7 @@ getStoredWallet.then(transaction, onError);
 browser.webRequest.onHeadersReceived.addListener(function(details) {
     
     if (details.statusLine.indexOf("402") > -1) {
-        
+
         /*
             Pega o cabeçalho da resposta 402, nele constam informações como o endereço de destino, o preço do que está sendo comprado
             e uma descrição/nome do que está sendo comprado.        
@@ -69,65 +71,78 @@ browser.webRequest.onHeadersReceived.addListener(function(details) {
                 about = cabecalho[i]['value'];
             }
         }
+        
+        var addr2 = bitcore.Address.fromString(pAddr);
+        var Insight = require("bitcore-explorers").Insight;
+        var insight = new Insight("testnet");
     
-        /*
-            Notificação para o usuário confirmar o pagamento.
-        */
-        browser.notifications.create("confirm", {
-            "type": "basic",
-            "iconUrl": browser.extension.getURL("icon.png"),
-            "title": "Pagamento requisitado",
-            "message": "A página requisitou um pagamento de "+ammount+" satoshis, com a descrição \""+about+"\", PARA CONFIRMAR CLIQUE NESSA NOTIFICAÇÃO, CASO CONTRÁRIO FECHE-A OU IGNORE-A"
-        });
+        var privK = bitcore.PrivateKey.fromString(carteira['priv']);
+        var addr = bitcore.Address.fromString(carteira['addr']);
 
-        var confirmPay = function () {
-            var addr2 = bitcore.Address.fromString(pAddr);
+        var confirmPay =  { 
+            confirm : function () {
+                insight.getUnspentUtxos(addr, function(err, utxos) {
+                    if (err) {
+                        //trata erros
+                    } else {
+                        //console.log(utxos.toString());
+                        //console.log(parseInt(ammount));
+                        var tx = bitcore.Transaction();
+                        tx.from(utxos);
+                        tx.to(addr2, parseInt(ammount));
+                        tx.change(addr);
+                        tx.sign(privK);
 
-            /*REALIZAR TRANSAÇÃO COM INSIGHT AQUI*/
-            var Insight = require("bitcore-explorers").Insight;
-            var insight = new Insight("testnet");
-            
-            var privK = bitcore.PrivateKey.fromString(carteira['priv']);
-            var addr = bitcore.Address.fromString(carteira['addr']);
-
-            insight.getUnspentUtxos(addr, function(err, utxos) {
-                if (err) {
-                    //trata erros
-                } else {
-                    //console.log(utxos.toString());
-                    //console.log(parseInt(ammount));
-                    var tx = bitcore.Transaction();
-                    tx.from(utxos);
-                    tx.to(addr2, parseInt(ammount));
-                    tx.change(addr);
-                    tx.sign(privK);
-
-                    tx.serialize();
-                    insight.broadcast(tx, function(err, txId) {
-                        if (err) {
-                            //tratar erros.
-                        } else {
-                            //transação funcionou corretamente
-                            var date = new Date();
-                            var dateTime = date.getDate()+"/"+(date.getMonth()+1)+"/"+date.getFullYear();
-                            registros.push({
-                                from: addr.toString(),
-                                to: addr2.toString(),
-                                desc: about,
-                                preco: ammount.toString(),
-                                data: dateTime
-                            });
-                            console.log(txId);
-                            browser.storage.local.set({historico:registros});
-                        }
-                    });
-                }
-            });
+                        tx.serialize();
+                        insight.broadcast(tx, function(err, txId) {
+                            if (err) {
+                                //tratar erros.
+                            } else {
+                                //transação funcionou corretamente
+                                var date = new Date();
+                                var dateTime = date.getDate()+"/"+(date.getMonth()+1)+"/"+date.getFullYear();
+                                registros.push({
+                                    from: addr.toString(),
+                                    to: addr2.toString(),
+                                    desc: about,
+                                    preco: ammount.toString(),
+                                    data: dateTime
+                                });
+                                console.log(txId);
+                                browser.storage.local.set({historico:registros});
+                            }
+                        });
+                    }
+                });
+            }
         };
-        if (!inited) {
-            browser.notifications.onClicked.addListener(confirmPay);
-            init();            
-        }
+        var whitelisted = false;
+        browser.storage.local.get(["whitelist"], function(data) {
+            listed = data.whitelist;
+            for (i in listed) {
+                var url = "";
+                browser.tabs.query({currentWindow:true, active:true}, function(tabs) {url = tabs[0].url});
+                if (listed[i].url.indexOf(url) > -1 && listed[i].limit >= ammount) {
+                    whitelisted = true;
+                    break;
+                }
+            }
+            if (!whitelisted) {
+                browser.notifications.create("confirm", {
+                    "type": "basic",
+                    "iconUrl": browser.extension.getURL("icon.png"),
+                    "title": "Pagamento requisitado",
+                    "message": "A página requisitou um pagamento de "+ammount+" satoshis, com a descrição \""+about+"\", PARA CONFIRMAR CLIQUE NESSA NOTIFICAÇÃO, CASO CONTRÁRIO FECHE-A OU IGNORE-A"
+                });            
+            } else {
+                confirmPay.confirm();
+            }
+
+            if (!inited && !whitelisted) {
+                browser.notifications.onClicked.addListener(confirmPay.confirm);
+                init();            
+            }
+        });
     }
 }, {urls: ['<all_urls>']}, ['blocking', 'responseHeaders']);
 
